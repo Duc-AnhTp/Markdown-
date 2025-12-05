@@ -54,7 +54,7 @@ db.orders.find(
   }                                                   // các field cần hiển thị
 )
 .sort({ order_date: -1 })                             // sắp xếp đơn mới nhất trước
-.limit(10);                                           // giới hạn 10 bản ghi
+.limit(10);                               // giới hạn 10 bản ghi
 ```  
 
 #### Q2 – Thống kê doanh thu và số lượng đơn theo từng ngày
