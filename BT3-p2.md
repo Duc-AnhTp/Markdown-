@@ -131,6 +131,70 @@ db.orders.aggregate([
 ]);
 ```
 
+
+
+
+
+### B.2.3. Thử nghiệm tính linh hoạt: thêm trường mới hasPromotion
+
+Để minh họa tính linh hoạt của mô hình NoSQL (schema-less), nhóm chọn thử nghiệm với một trường mới là hasPromotion. Trường này biểu diễn việc đơn hàng có áp dụng khuyến mãi hay không.
+
+Điểm quan trọng là:
+
+- Không cần thay đổi cấu trúc schema ở mức hệ thống (không có ALTER TABLE như trong SQL).
+
+- Có thể thêm trực tiếp trường mới vào một phần dữ liệu hiện có, chỉ bằng các câu lệnh update.
+
+Ví dụ, gán hasPromotion = true cho các đơn hàng có tổng tiền lớn hơn 2.000.000:
+
+```javascript
+db.orders.updateMany(
+  { total_amount: { $gt: 2000000 } },
+  { $set: { hasPromotion: true } }
+);
+```
+
+Sau khi cập nhật, có thể thực hiện một số truy vấn kiểm tra:
+
+- Đếm số đơn hàng có khuyến mãi:
+  
+  ```javascript
+  db.orders.countDocuments({ hasPromotion: true });
+  ```
+  
+- Lấy 10 đơn hàng có khuyến mãi, sắp xếp theo ngày đặt hàng:
+  ```javascript
+  db.orders.find(
+    { hasPromotion: true },
+    {
+      order_code: 1,
+      order_date: 1,
+      total_amount: 1,
+      hasPromotion: 1
+    }
+  )
+  .sort({ order_date: -1 })
+  .limit(10);
+  ``` 
+- Thống kê tổng doanh thu của các đơn hàng có khuyến mãi:
+  ```javascript
+  db.orders.aggregate([
+    { $match: { hasPromotion: true } },
+    {
+      $group: {
+        _id: null,
+        totalRevenuePromotion: { $sum: "$total_amount" },
+        orderCountPromotion:   { $sum: 1 }
+      }
+    }
+  ]);
+  ```
+
+Qua thử nghiệm này, có thể thấy việc thêm trường mới trong MongoDB rất linh hoạt, không ảnh hưởng đến các document không có trường đó (chúng vẫn hợp lệ) và các truy vấn có thể vừa lọc theo hasPromotion, vừa kết hợp với các điều kiện khác như status, order_date nếu cần.
+
+
+
+
 ### B.2.4. Ghi nhận kết quả và bàn giao cho Người D
 
 Sau khi hoàn thành các bước trên, tôi đã:
