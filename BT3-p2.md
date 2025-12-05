@@ -25,7 +25,9 @@ Kết quả trả về xấp xỉ 1.000.000 document, đảm bảo dữ liệu �
 
 ### B.2.2. Chuyển đổi Q1–Q3 từ SQL sang MQL
 
-Từ bài toán SQL ban đầu (trên mô hình quan hệ), nhóm yêu cầu giữ nguyên logic nghiệp vụ nhưng viết lại bằng ngôn ngữ truy vấn của MongoDB (MQL) trên mô hình embedded orders. Tại thời điểm này chưa tạo bất kỳ index nào, mục tiêu là quan sát “hiệu năng thô” của 3 câu truy vấn chính.
+Từ bài toán SQL ban đầu (trên mô hình quan hệ), nhóm yêu cầu giữ nguyên logic nghiệp vụ nhưng viết lại bằng ngôn ngữ truy vấn của MongoDB (MQL) trên mô hình embedded orders. 
+
+Tại thời điểm này chưa tạo bất kỳ index nào, mục tiêu là quan sát “hiệu năng thô” của 3 câu truy vấn chính.
 
 Database sử dụng: btl_bigdata  
 
