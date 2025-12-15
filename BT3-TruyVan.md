@@ -1,17 +1,18 @@
-1) Document model đề xuất (match Q1/Q2/Q3)
+### 1) Document model đề xuất (match Q1/Q2/Q3)
 
 Collections
 
-products (reference → suppliers)
+- products (reference → suppliers)
 
-suppliers
+- suppliers
 
-orders (embedded items như OrderDetails, reference → products.productId)
+- orders (embedded items như OrderDetails, reference → products.productId)
 
-inventoryLogs (reference → products.productId)
+- inventoryLogs (reference → products.productId)
 
-products
+Products
 
+```javascript
 {
   productId: 1234,
   productName: "A",
@@ -21,15 +22,15 @@ products
   price: 12000,
   supplierId: 7            // reference suppliers.supplierId
 }
-
+```
 
 suppliers
-
+```javascript
 { supplierId: 7, supplierName: "Supplier 7", phone: "...", email: "..." }
-
+```
 
 orders (embedded items ≈ OrderDetails)
-
+```javascript
 {
   orderId: 9001,
   status: "Completed",
@@ -39,21 +40,21 @@ orders (embedded items ≈ OrderDetails)
     { productId: 5555, quantity: 1, unitPrice: 7000 }
   ]
 }
-
+```
 
 inventoryLogs
-
+```javascript
 { productId: 1234, logDate: ISODate("2025-12-10"), changeAmount: -3 }
+```
 
+#### Embedded ở orders.items để đọc/ghi đơn hàng nhanh; Reference ở products→suppliers, inventoryLogs→products để tránh lặp dữ liệu và dễ cập nhật.
 
-Embedded ở orders.items để đọc/ghi đơn hàng nhanh; Reference ở products→suppliers, inventoryLogs→products để tránh lặp dữ liệu và dễ cập nhật.
+---
 
-2) Q1 MongoDB (lọc district + sort expiryDate + limit 20)
+### 2) Q1 MongoDB (lọc district + sort expiryDate + limit 20)
 
 MySQL gốc: Products lọc District IN, sort ExpiryDate, limit 20 
-
-pratice_index
-
+```javascript
 db.products
   .find(
     { district: { $in: ["District1", "District2"] } },
@@ -61,29 +62,27 @@ db.products
   )
   .sort({ expiryDate: 1 })
   .limit(20);
-
+```
 
 Index (tương đương composite MySQL District+ExpiryDate) 
-
-pratice_index
-
+```javascript
 db.products.createIndex({ district: 1, expiryDate: 1 });
-
+```
 
 Explain
-
+```javascript
 db.products
   .find({ district: { $in: ["District1", "District2"] } })
   .sort({ expiryDate: 1 })
   .limit(20)
   .explain("executionStats");
+```
+---
 
-3) Q2 MongoDB (group theo tháng 12 tháng gần nhất)
+### 3) Q2 MongoDB (group theo tháng 12 tháng gần nhất)
 
 MySQL gốc: group theo DATE_FORMAT(LogDate,'%Y-%m'), lọc LogDate >= NOW()-12 months 
-
-pratice_index
-
+```javascript
 const from = new Date();
 from.setMonth(from.getMonth() - 12);
 
@@ -98,17 +97,15 @@ db.inventoryLogs.aggregate([
   },
   { $sort: { _id: 1 } }
 ]);
-
+```
 
 Index (tương đương index theo thời gian LogDate) 
-
-pratice_index
-
+```javascript
 db.inventoryLogs.createIndex({ logDate: 1 });
-
+```
 
 Explain
-
+```javascript
 db.inventoryLogs.explain("executionStats").aggregate([
   { $match: { logDate: { $gte: from } } },
   {
@@ -120,14 +117,15 @@ db.inventoryLogs.explain("executionStats").aggregate([
   },
   { $sort: { _id: 1 } }
 ]);
+```
 
+---
 4) Q3 MongoDB (Top sản phẩm theo doanh thu + supplierName)
 
 MySQL gốc: join Orders + OrderDetails + Products + Suppliers, lọc o.Status='Completed', group + sort revenue desc limit 10 
 
-pratice_index
-
-Phiên bản “NoSQL đúng chất” (orders có embedded items)
+**Phiên bản “NoSQL đúng chất” (orders có embedded items)**
+```javascript
 db.orders.aggregate([
   { $match: { status: "Completed" } },
   { $unwind: "$items" },
@@ -176,10 +174,10 @@ db.orders.aggregate([
     }
   }
 ]);
-
+```
 
 Index gợi ý
-
+```javascript
 db.orders.createIndex({ status: 1 });
 db.orders.createIndex({ "items.productId": 1 });     // multikey
 db.products.createIndex({ productId: 1 });           // cho $lookup
@@ -202,10 +200,8 @@ db.orders.explain("executionStats").aggregate([
   { $sort: { revenue: -1 } },
   { $limit: 10 }
 ]);
-
+```
 
 Lưu ý: nếu data bạn đang generate dùng status tiếng Việt "Hoàn thành" (như script faker của bạn) 
-
-fake-data
 
  thì đổi { status: "Completed" } thành { status: "Hoàn thành" }.
