@@ -1,216 +1,211 @@
-## B.2. Truy vấn & Nghiệp vụ (Logic)
-### B.2.1. Import 1 triệu dữ liệu từ Người A vào MongoDB  
+1) Document model đề xuất (match Q1/Q2/Q3)
 
-Dữ liệu được Người A xuất ra dưới dạng file JSON (ví dụ: orders_1m.json) chứa khoảng 1.000.000 document.  
+Collections
 
-Trên máy cài đặt MongoDB, tôi sử dụng công cụ dòng lệnh mongoimport để import dữ liệu vào database btl_bigdata, collection orders.
+products (reference → suppliers)
 
-Câu lệnh thực hiện như sau: 
-```javascript
-mongoimport \
-  --uri="mongodb://localhost:27017" \
-  --db=btl_bigdata \
-  --collection=orders \
-  --file=orders_1m.json \
-  --jsonArray
-```
-Sau khi import, kiểm tra nhanh trong mongosh:
+suppliers
 
-```javascript
-mongosh "mongodb://localhost:27017"
-use btl_bigdata
-db.orders.countDocuments()
-```
-Kết quả trả về xấp xỉ 1.000.000 document, đảm bảo dữ liệu đầu vào đủ lớn để thử nghiệm hiệu năng truy vấn (đặc biệt cho phần so sánh trước/sau khi tạo index ở mục B.3).  
+orders (embedded items như OrderDetails, reference → products.productId)
 
-### B.2.2. Chuyển đổi Q1–Q3 từ SQL sang MQL
+inventoryLogs (reference → products.productId)
 
-Từ bài toán SQL ban đầu (trên mô hình quan hệ), nhóm yêu cầu giữ nguyên logic nghiệp vụ nhưng viết lại bằng ngôn ngữ truy vấn của MongoDB (MQL) trên mô hình embedded orders. 
+products
 
-Tại thời điểm này chưa tạo bất kỳ index nào, mục tiêu là quan sát “hiệu năng thô” của 3 câu truy vấn chính.
+{
+  productId: 1234,
+  productName: "A",
+  district: "District1",
+  expiryDate: ISODate("2026-01-10"),
+  stockQuantity: 100,
+  price: 12000,
+  supplierId: 7            // reference suppliers.supplierId
+}
 
-Database sử dụng: btl_bigdata  
 
-Collection: orders  
+suppliers
 
-```javascript
-use btl_bigdata
-```
-#### Q1 – Lọc đơn hàng theo trạng thái, sắp xếp theo ngày, lấy 10 bản ghi
+{ supplierId: 7, supplierName: "Supplier 7", phone: "...", email: "..." }
 
-Nghiệp vụ: Lấy các đơn hàng có trạng thái “Đang giao” hoặc “Hoàn thành”, ưu tiên đơn mới nhất, giới hạn số lượng kết quả để hiển thị.
 
-MQL tương ứng:
+orders (embedded items ≈ OrderDetails)
 
-```javascipt
-db.orders.find(
-  { status: { $in: ["Đang giao", "Hoàn thành"] } },   // điều kiện lọc
-  {
-    order_code: 1,
-    order_date: 1,
-    status: 1,
-    total_amount: 1,
-    "customer.name": 1
-  }                                                   // các field cần hiển thị
-)
-.sort({ order_date: -1 })                             // sắp xếp đơn mới nhất trước
-.limit(10);                               // giới hạn 10 bản ghi
-```  
+{
+  orderId: 9001,
+  status: "Completed",
+  orderDate: ISODate("2025-11-01"),
+  items: [
+    { productId: 1234, quantity: 2, unitPrice: 12000 },
+    { productId: 5555, quantity: 1, unitPrice: 7000 }
+  ]
+}
 
-#### Q2 – Thống kê doanh thu và số lượng đơn theo từng ngày
 
-Nghiệp vụ: Thực hiện thống kê tổng doanh thu (total_amount) và số lượng đơn hàng theo từng ngày, phục vụ mục đích phân tích kinh doanh theo thời gian.
+inventoryLogs
 
-MQL sử dụng Aggregation Pipeline:
+{ productId: 1234, logDate: ISODate("2025-12-10"), changeAmount: -3 }
 
-```javascript
-db.orders.aggregate([
+
+Embedded ở orders.items để đọc/ghi đơn hàng nhanh; Reference ở products→suppliers, inventoryLogs→products để tránh lặp dữ liệu và dễ cập nhật.
+
+2) Q1 MongoDB (lọc district + sort expiryDate + limit 20)
+
+MySQL gốc: Products lọc District IN, sort ExpiryDate, limit 20 
+
+pratice_index
+
+db.products
+  .find(
+    { district: { $in: ["District1", "District2"] } },
+    { _id: 0, productId: 1, productName: 1, district: 1, expiryDate: 1, stockQuantity: 1, price: 1 }
+  )
+  .sort({ expiryDate: 1 })
+  .limit(20);
+
+
+Index (tương đương composite MySQL District+ExpiryDate) 
+
+pratice_index
+
+db.products.createIndex({ district: 1, expiryDate: 1 });
+
+
+Explain
+
+db.products
+  .find({ district: { $in: ["District1", "District2"] } })
+  .sort({ expiryDate: 1 })
+  .limit(20)
+  .explain("executionStats");
+
+3) Q2 MongoDB (group theo tháng 12 tháng gần nhất)
+
+MySQL gốc: group theo DATE_FORMAT(LogDate,'%Y-%m'), lọc LogDate >= NOW()-12 months 
+
+pratice_index
+
+const from = new Date();
+from.setMonth(from.getMonth() - 12);
+
+db.inventoryLogs.aggregate([
+  { $match: { logDate: { $gte: from } } },
   {
     $group: {
-      _id: {
-        year:  { $year: "$order_date" },
-        month: { $month: "$order_date" },
-        day:   { $dayOfMonth: "$order_date" }
-      },
-      totalRevenue: { $sum: "$total_amount" },
-      orderCount:   { $sum: 1 }
+      _id: { $dateToString: { format: "%Y-%m", date: "$logDate" } },
+      total_change: { $sum: "$changeAmount" },
+      total_events: { $sum: 1 }
     }
   },
-  {
-    $project: {
-      _id: 0,
-      date: {
-        $dateFromParts: {
-          year:  "$_id.year",
-          month: "$_id.month",
-          day:   "$_id.day"
-        }
-      },
-      totalRevenue: 1,
-      orderCount: 1
-    }
-  },
-  { $sort: { date: 1 } }   // sắp xếp tăng dần theo ngày
+  { $sort: { _id: 1 } }
 ]);
-```
 
-#### Q3 – Top 10 sản phẩm bán chạy nhất (từ mảng embedded items)
 
-Nghiệp vụ: Tìm danh sách các sản phẩm được mua nhiều nhất trong toàn bộ 1.000.000 đơn hàng, dựa trên tổng số lượng (quantity) và tính kèm tổng doanh thu mang lại cho từng sản phẩm.
+Index (tương đương index theo thời gian LogDate) 
 
-Mô hình embedded lưu sản phẩm trong mảng items của từng document orders, do đó cần sử dụng $unwind để “dỡ” mảng thành từng dòng, sau đó group theo sản phẩm:
+pratice_index
 
-```javascript
-db.orders.aggregate([
-  { $unwind: "$items" },   // tách từng item trong mảng items thành dòng riêng
+db.inventoryLogs.createIndex({ logDate: 1 });
+
+
+Explain
+
+db.inventoryLogs.explain("executionStats").aggregate([
+  { $match: { logDate: { $gte: from } } },
   {
     $group: {
-      _id: {
-        product_id:   "$items.product_id",
-        product_name: "$items.product_name"
-      },
-      totalQuantity: { $sum: "$items.quantity" },
-      totalRevenue:  {
-        $sum: { $multiply: ["$items.quantity", "$items.price"] }
-      },
-      orderCount:    { $sum: 1 }   // số đơn có chứa sản phẩm này
+      _id: { $dateToString: { format: "%Y-%m", date: "$logDate" } },
+      total_change: { $sum: "$changeAmount" },
+      total_events: { $sum: 1 }
     }
   },
-  { $sort: { totalQuantity: -1 } },  // sản phẩm bán chạy nhất (số lượng nhiều nhất) lên đầu
+  { $sort: { _id: 1 } }
+]);
+
+4) Q3 MongoDB (Top sản phẩm theo doanh thu + supplierName)
+
+MySQL gốc: join Orders + OrderDetails + Products + Suppliers, lọc o.Status='Completed', group + sort revenue desc limit 10 
+
+pratice_index
+
+Phiên bản “NoSQL đúng chất” (orders có embedded items)
+db.orders.aggregate([
+  { $match: { status: "Completed" } },
+  { $unwind: "$items" },
+
+  {
+    $group: {
+      _id: "$items.productId",
+      revenue: { $sum: { $multiply: ["$items.quantity", "$items.unitPrice"] } },
+      total_qty: { $sum: "$items.quantity" }
+    }
+  },
+
+  { $sort: { revenue: -1 } },
   { $limit: 10 },
+
+  // join sang products để lấy ProductName + SupplierID
+  {
+    $lookup: {
+      from: "products",
+      localField: "_id",
+      foreignField: "productId",
+      as: "p"
+    }
+  },
+  { $unwind: "$p" },
+
+  // join sang suppliers để lấy SupplierName
+  {
+    $lookup: {
+      from: "suppliers",
+      localField: "p.supplierId",
+      foreignField: "supplierId",
+      as: "s"
+    }
+  },
+  { $unwind: { path: "$s", preserveNullAndEmptyArrays: true } },
+
   {
     $project: {
       _id: 0,
-      product_id:   "$_id.product_id",
-      product_name: "$_id.product_name",
-      totalQuantity: 1,
-      totalRevenue: 1,
-      orderCount: 1
+      productId: "$p.productId",
+      productName: "$p.productName",
+      supplierName: "$s.supplierName",
+      revenue: 1,
+      total_qty: 1
     }
   }
 ]);
-```
 
 
+Index gợi ý
+
+db.orders.createIndex({ status: 1 });
+db.orders.createIndex({ "items.productId": 1 });     // multikey
+db.products.createIndex({ productId: 1 });           // cho $lookup
+db.products.createIndex({ supplierId: 1 });
+db.suppliers.createIndex({ supplierId: 1 });
 
 
+Explain
 
-### B.2.3. Thử nghiệm tính linh hoạt: thêm trường mới hasPromotion
-
-Để minh họa tính linh hoạt của mô hình NoSQL (schema-less), nhóm chọn thử nghiệm với một trường mới là hasPromotion. Trường này biểu diễn việc đơn hàng có áp dụng khuyến mãi hay không.
-
-Điểm quan trọng là:
-
-- Không cần thay đổi cấu trúc schema ở mức hệ thống (không có ALTER TABLE như trong SQL).
-
-- Có thể thêm trực tiếp trường mới vào một phần dữ liệu hiện có, chỉ bằng các câu lệnh update.
-
-Ví dụ, gán hasPromotion = true cho các đơn hàng có tổng tiền lớn hơn 2.000.000:
-
-```javascript
-db.orders.updateMany(
-  { total_amount: { $gt: 2000000 } },
-  { $set: { hasPromotion: true } }
-);
-```
-
-Sau khi cập nhật, có thể thực hiện một số truy vấn kiểm tra:
-
-- Đếm số đơn hàng có khuyến mãi:
-  
-  ```javascript
-  db.orders.countDocuments({ hasPromotion: true });
-  ```
-  
-- Lấy 10 đơn hàng có khuyến mãi, sắp xếp theo ngày đặt hàng:
-  ```javascript
-  db.orders.find(
-    { hasPromotion: true },
-    {
-      order_code: 1,
-      order_date: 1,
-      total_amount: 1,
-      hasPromotion: 1
+db.orders.explain("executionStats").aggregate([
+  { $match: { status: "Completed" } },
+  { $unwind: "$items" },
+  {
+    $group: {
+      _id: "$items.productId",
+      revenue: { $sum: { $multiply: ["$items.quantity", "$items.unitPrice"] } },
+      total_qty: { $sum: "$items.quantity" }
     }
-  )
-  .sort({ order_date: -1 })
-  .limit(10);
-  ``` 
-- Thống kê tổng doanh thu của các đơn hàng có khuyến mãi:
-  ```javascript
-  db.orders.aggregate([
-    { $match: { hasPromotion: true } },
-    {
-      $group: {
-        _id: null,
-        totalRevenuePromotion: { $sum: "$total_amount" },
-        orderCountPromotion:   { $sum: 1 }
-      }
-    }
-  ]);
-  ```
-
-Qua thử nghiệm này, có thể thấy việc thêm trường mới trong MongoDB rất linh hoạt, không ảnh hưởng đến các document không có trường đó (chúng vẫn hợp lệ) và các truy vấn có thể vừa lọc theo hasPromotion, vừa kết hợp với các điều kiện khác như status, order_date nếu cần.
+  },
+  { $sort: { revenue: -1 } },
+  { $limit: 10 }
+]);
 
 
+Lưu ý: nếu data bạn đang generate dùng status tiếng Việt "Hoàn thành" (như script faker của bạn) 
 
+fake-data
 
-### B.2.4. Ghi nhận kết quả và bàn giao cho Người D
-
-Sau khi hoàn thành các bước trên, tôi đã:
-
-- Chuẩn hóa lại toàn bộ câu truy vấn MQL cho Q1, Q2, Q3 và các câu truy vấn liên quan đến trường mới hasPromotion dưới dạng một file script (có thể đặt tên queries_no_index.mongo) với đầy đủ comment giải thích.
-
-- Chạy thử Q1–Q3 trên dữ liệu 1.000.000 document trước khi tạo index, đồng thời sử dụng:
-
-  ```javascript
-  .explain("executionStats")
-  ```
-  để ghi lại:
-  - executionTimeMillis
-
-  - totalDocsExamined
-
-  - Các thông tin liên quan đến cách MongoDB thực hiện truy vấn.
-
-- Bàn giao các script truy vấn và số liệu thực nghiệm này cho Người D, để dùng làm cơ sở so sánh hiệu năng trước và sau khi áp dụng index trong phần tối ưu truy vấn (mục B.3 của báo cáo).
+ thì đổi { status: "Completed" } thành { status: "Hoàn thành" }.
