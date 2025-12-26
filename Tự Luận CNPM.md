@@ -48,3 +48,20 @@ Tóm lại: FR + NFR + Constraints + Data + Interfaces + Operational là bộ kh
 | Người tham gia chính | BA/PO + khách hàng + dev/QA (để làm rõ)                                                  | BA/PO chủ trì, dev/QA dùng để triển khai & test, stakeholder ký duyệt                     |
 | Khi nào dùng mạnh    | Giai đoạn đầu và lặp lại khi có thay đổi                                                 | Khi cần “chốt” phiên bản yêu cầu, làm baseline, bàn giao cho dev/test                     |
 
+
+### 3) Khi nào chúng ta có thể áp dụng mô hình quy trình kỹ nghệ phần mềm theo Agile?
+Chúng ta có thể áp dụng mô hình quy trình kỹ nghệ phần mềm theo Agile khi dự án cần tính linh hoạt cao và có thể phát triển theo từng phần nhỏ (increment) trong các vòng lặp ngắn (Sprint). Cụ thể, Agile phù hợp nhất trong các trường hợp sau:
+
+- Yêu cầu chưa rõ ràng hoặc thay đổi thường xuyên: Khách hàng chưa xác định đầy đủ nhu cầu ngay từ đầu, hoặc môi trường/ thị trường biến động nhanh nên cần thích ứng liên tục.
+
+- Cần đưa sản phẩm ra sớm (time-to-market): Doanh nghiệp muốn phát hành sớm các chức năng quan trọng để lấy phản hồi hoặc tạo lợi thế cạnh tranh.
+
+- Khách hàng/ Product Owner tham gia tích cực: Có người đại diện nghiệp vụ làm việc thường xuyên với nhóm phát triển để phản hồi, ưu tiên backlog và nghiệm thu từng increment.
+
+- Đội ngũ phát triển có năng lực và phối hợp tốt: Nhóm nhỏ–vừa, giao tiếp hiệu quả, có khả năng tự tổ chức và ra quyết định nhanh.
+
+- Dự án có độ phức tạp và rủi ro cao: Làm theo các vòng lặp ngắn giúp phát hiện vấn đề sớm, giảm rủi ro kỹ thuật và điều chỉnh kịp thời.
+
+- Có khả năng kiểm thử và tích hợp thường xuyên: Mỗi Sprint tạo ra một phiên bản chạy được, dễ demo và đánh giá chất lượng.
+
+- Ngược lại, Agile thường kém phù hợp nếu yêu cầu đã cố định chặt ngay từ đầu, ít thay đổi, hoặc dự án chịu ràng buộc nặng về quy trình phê duyệt/tài liệu và không thể nhận phản hồi thường xuyên.
